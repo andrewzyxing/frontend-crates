@@ -13,6 +13,8 @@ use crate::models::glm5_next::{
 };
 use crate::models::kimi_k3::{KimiK3Processor, KimiK3Spec};
 use crate::models::qwen_vl::{QwenVlSpec, Resampler};
+#[cfg(feature = "audio")]
+use crate::models::qwen3_asr::{Qwen3AsrProcessor, Qwen3AsrSpec};
 use crate::{MmError, Result};
 use serde_json::Value;
 
@@ -24,6 +26,8 @@ use serde_json::Value;
 #[non_exhaustive]
 pub enum ProcessorSpec {
     QwenVl(QwenVlSpec),
+    #[cfg(feature = "audio")]
+    Qwen3Asr(Qwen3AsrSpec),
     /// Metadata-only image accounting and layout; pixel processing is unsupported.
     DeepseekV41(DeepseekV41Spec),
     /// Metadata-only GLM-5.3-Flash image accounting and layout; pixel
@@ -45,6 +49,13 @@ impl TryFrom<Value> for ProcessorSpec {
     fn try_from(mut value: Value) -> std::result::Result<Self, Self::Error> {
         match value.get("family").and_then(Value::as_str) {
             Some("qwen_vl") => serde_json::from_value(value).map(Self::QwenVl),
+            #[cfg(feature = "audio")]
+            Some("qwen3_asr") => {
+                if let Some(spec) = value.as_object_mut() {
+                    spec.remove("family");
+                }
+                serde_json::from_value(value).map(Self::Qwen3Asr)
+            }
             Some("deepseek_v41") => serde_json::from_value(value).map(Self::DeepseekV41),
             Some("glm5_next")
                 if ["image_mean", "image_std", "resample"]
@@ -74,6 +85,8 @@ pub fn build_processor(
     spec: ProcessorSpec,
 ) -> Result<Box<dyn crate::processor::MmFamilyProcessor>> {
     match spec {
+        #[cfg(feature = "audio")]
+        ProcessorSpec::Qwen3Asr(spec) => Ok(Box::new(Qwen3AsrProcessor::new(spec)?)),
         ProcessorSpec::QwenVl(spec) => Ok(Box::new(crate::models::qwen_vl::QwenVlProcessor::new(
             spec,
         )?)),

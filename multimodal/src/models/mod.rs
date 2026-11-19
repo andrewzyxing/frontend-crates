@@ -10,4 +10,6 @@
 pub mod deepseek_v41;
 pub mod glm5_next;
 pub mod kimi_k3;
+#[cfg(feature = "audio")]
+pub mod qwen3_asr;
 pub mod qwen_vl;

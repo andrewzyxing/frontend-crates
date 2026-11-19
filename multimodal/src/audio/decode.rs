@@ -8,7 +8,7 @@
 use crate::{MmError, Result, processor::DecodedMedia};
 use std::io::Cursor;
 use symphonia::core::{
-    codecs::audio::AudioDecoderOptions,
+    codecs::audio::{AudioDecoderOptions, well_known::CODEC_ID_PCM_S16LE},
     errors::Error,
     formats::{FormatOptions, TrackType, probe::Hint},
     io::MediaSourceStream,
@@ -40,6 +40,18 @@ fn failure(context: &str, error: Error) -> MmError {
 }
 
 pub fn decode(data: &[u8], limits: &DecodeLimits) -> Result<DecodedMedia> {
+    decode_inner(data, limits, false)
+}
+
+/// Limit the same decoder to WAV carrying signed 16-bit PCM.
+pub fn decode_wav_pcm16(data: &[u8], limits: &DecodeLimits) -> Result<DecodedMedia> {
+    if data.get(..4) != Some(b"RIFF") || data.get(8..12) != Some(b"WAVE") {
+        return Err(MmError::invalid_input("audio: expected PCM16 WAV"));
+    }
+    decode_inner(data, limits, true)
+}
+
+fn decode_inner(data: &[u8], limits: &DecodeLimits, wav_pcm16: bool) -> Result<DecodedMedia> {
     if data.len() > limits.max_bytes {
         return Err(MmError::limit_exceeded(
             "audio: encoded byte limit exceeded",
@@ -72,6 +84,9 @@ pub fn decode(data: &[u8], limits: &DecodeLimits) -> Result<DecodedMedia> {
         .as_ref()
         .and_then(|p| p.audio())
         .ok_or_else(|| MmError::unsupported("audio: missing codec parameters"))?;
+    if wav_pcm16 && params.codec != CODEC_ID_PCM_S16LE {
+        return Err(MmError::invalid_input("audio: expected PCM16 WAV"));
+    }
     let mut decoder = symphonia::default::get_codecs()
         .make_audio_decoder(params, &AudioDecoderOptions::default())
         .map_err(|e| failure("unsupported audio codec", e))?;
